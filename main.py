@@ -27,7 +27,6 @@ from .gemini_content import process_audio_with_gemini, process_images_with_gemin
 from .videos_cliper import separate_audio_video, extract_frame
 from astrbot.core.message.message_event_result import MessageChain
 
-@register("hybird_videos_analysis", "喵喵", "可以解析抖音和bili视频", "0.2.12","https://github.com/miaoxutao123/astrbot_plugin_videos_analysis")
 class hybird_videos_analysis(Star):
     def __init__(self, context: Context, config: dict):
         super().__init__(context)
@@ -68,11 +67,13 @@ class hybird_videos_analysis(Star):
         self.external_handled_videos = {} # {video_id: timestamp}
         self.external_handled_lock = threading.Lock()
 
-
-
         self.data_dir = StarTools.get_data_dir("astrbot_plugin_videos_analysis")
         self.download_dir = self.data_dir / "download_videos" / "dy"
         self.download_dir.mkdir(parents=True, exist_ok=True)
+        self.bili_download_dir = self.data_dir / "download_videos" / "bili"
+        self.bili_download_dir.mkdir(parents=True, exist_ok=True)
+        self.direct_download_dir = self.data_dir / "download_videos" / "direct"
+        self.direct_download_dir.mkdir(parents=True, exist_ok=True)
 
     async def _recall_msg(self, event: AstrMessageEvent, message_id: int):
         """撤回消息"""
@@ -885,7 +886,7 @@ async def auto_parse_bili(self, event: AstrMessageEvent, *args, **kwargs):
         return
 
     # 删除过期文件
-    await self._cleanup_old_files("data/plugins/astrbot_plugin_videos_analysis/download_videos/bili/")
+    await self._cleanup_old_files(str(self.bili_download_dir))
 
     # 获取视频ID并应用二进制退避算法
     video_id = self._extract_video_id(url, "bili")
@@ -926,7 +927,16 @@ async def auto_parse_bili(self, event: AstrMessageEvent, *args, **kwargs):
         temp_dir = None
         try:
             # 1. 下载视频 (强制不使用登录)
-            download_result = await process_bili_video(url, download_flag=True, quality=self.bili_quality, use_login=False, event=None)
+            download_result = await process_bili_video(
+                url, 
+                download_flag=True, 
+                quality=self.bili_quality, 
+                use_login=False, 
+                event=None, 
+                bili_download_dir=str(self.bili_download_dir),
+                cookie_file=str(self.data_dir / "bili_cookies.json"),
+                data_dir=str(self.data_dir)
+            )
             if not download_result or not download_result.get("video_path"):
                 yield event.plain_result("抱歉，我无法下载这个视频。")
                 return
@@ -1136,22 +1146,6 @@ async def auto_parse_bili(self, event: AstrMessageEvent, *args, **kwargs):
                             await self._recall_msg(event, ret.message_id)
             except Exception as e:
                 logger.error(f"发送消息或撤回失败: {e}")
-
-    # 发送完成后，清理视频记录
-    # if 'video_id' in locals() and video_id:
-    #     with self.video_records_lock:
-    #         if video_id in self.video_records:
-    #             del self.video_records[video_id]
-    #             logger.info(f"B站视频 {video_id} 解析完成，已清理记录")
-
-# @filter.event_message_type(EventMessageType.ALL)
-# async def auto_parse_ks(self, event: AstrMessageEvent, *args, **kwargs):
-#     """
-#     自动检测消息中是否包含快手分享链接，并解析。
-#     """
-#     api_url = "https://api.kxzjoker.cn/api/jiexi_video"
-#     message_str = event.message_str
-#     match = re.search(r"(https?://v\.k\.ua\.com/[a-zA-Z0-9_\-]+(?:-[a-zA-Z0-9_\-]+)?)", message_str)
 
 @filter.event_message_type(EventMessageType.ALL, priority=10)
 async def auto_parse_xhs(self, event: AstrMessageEvent, *args, **kwargs):
@@ -1460,7 +1454,7 @@ async def process_direct_video(self, event: AstrMessageEvent, *args, **kwargs):
     video_path = None
     try:
         # 1. 下载视频到本地
-        download_dir = "data/plugins/astrbot_plugin_videos_analysis/download_videos/direct/"
+        download_dir = str(self.direct_download_dir)
         os.makedirs(download_dir, exist_ok=True)
 
         video_path = os.path.join(download_dir, video_filename)
