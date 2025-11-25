@@ -1,4 +1,5 @@
 from astrbot.api.all import *
+from astrbot.api.star import StarTools
 from astrbot.api.message_components import Node, Plain, Image, Video, Nodes
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api import logger
@@ -67,8 +68,11 @@ class hybird_videos_analysis(Star):
         self.external_handled_videos = {} # {video_id: timestamp}
         self.external_handled_lock = threading.Lock()
 
-        self.external_handled_videos = {} # {video_id: timestamp}
-        self.external_handled_lock = threading.Lock()
+
+
+        self.data_dir = StarTools.get_data_dir("astrbot_plugin_videos_analysis")
+        self.download_dir = self.data_dir / "download_videos" / "dy"
+        self.download_dir.mkdir(parents=True, exist_ok=True)
 
     async def _recall_msg(self, event: AstrMessageEvent, message_id: int):
         """撤回消息"""
@@ -100,7 +104,8 @@ class hybird_videos_analysis(Star):
     async def _process_multi_part_media(self, event, result, media_type: str):
         """Helper function to process multi-part media (images or videos)"""
         ns = Nodes([])
-        download_dir = "data/plugins/astrbot_plugin_videos_analysis/download_videos/dy"
+
+        download_dir = str(self.download_dir)
         os.makedirs(download_dir, exist_ok=True)
 
         for i in range(len(result["media_urls"])):
@@ -168,7 +173,8 @@ class hybird_videos_analysis(Star):
     async def _process_single_media(self, event, result, media_type: str):
         """Helper function to process single media file"""
         media_url = result["media_urls"][0]
-        download_dir = "data/plugins/astrbot_plugin_videos_analysis/download_videos/dy"
+
+        download_dir = str(self.download_dir)
         os.makedirs(download_dir, exist_ok=True)
         aweme_id = result.get("aweme_id", "unknown")
 
@@ -499,7 +505,8 @@ class hybird_videos_analysis(Star):
 
     async def _process_douyin_comprehension(self, event, result, content_type: str, api_key: str, proxy_url: str):
         """处理抖音视频/图片的深度理解"""
-        download_dir = "data/plugins/astrbot_plugin_videos_analysis/download_videos/dy"
+        """处理抖音视频/图片的深度理解"""
+        download_dir = str(self.download_dir)
         os.makedirs(download_dir, exist_ok=True)
         
         media_urls = result.get("media_urls", [])
@@ -679,9 +686,11 @@ async def auto_parse_dy(self, event: AstrMessageEvent, *args, **kwargs):
     """
     cookie = self.doyin_cookie
     message_str = event.message_str
+
+
     match = re.search(r"(https?://v\.douyin\.com/[a-zA-Z0-9_\-]+(?:-[a-zA-Z0-9_\-]+)?)", message_str)
 
-    await self._cleanup_old_files("data/plugins/astrbot_plugin_videos_analysis/download_videos/dy")
+    await self._cleanup_old_files(str(self.download_dir))
 
     if not match:
         return
